@@ -1,0 +1,332 @@
+<!DOCTYPE html>
+<html lang="ar" dir="rtl">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>مكتب الخروج</title>
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans+Arabic:wght@400;600;700&display=swap" rel="stylesheet">
+<style>
+:root{--bg:#eef1f5;--card:#fff;--ink:#16202e;--mut:#667085;--line:#d9dee7;--acc:#1f5fbf;--up:#14804a;--dn:#c23b3b;--wa:#b7791f}
+@media(prefers-color-scheme:dark){:root{--bg:#12161d;--card:#1b212b;--ink:#e8ecf2;--mut:#97a1b2;--line:#2b3442;--acc:#6ea0f5;--up:#4cc48a;--dn:#f07a7a;--wa:#e0aa4f}}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--ink);font:15px/1.6 "IBM Plex Sans Arabic",Tahoma,sans-serif}
+.w{max-width:920px;margin:0 auto;padding:16px}
+h1{font-size:22px;margin:4px 0 12px}h2{font-size:17px;margin:0 0 10px}
+nav{display:flex;gap:6px;margin-bottom:14px;flex-wrap:wrap}
+nav button{flex:1;min-width:90px}
+button,input,select{font:inherit;color:inherit}
+button{background:var(--card);border:1px solid var(--line);border-radius:8px;padding:8px 12px;cursor:pointer}
+button.on,button.p{background:var(--acc);border-color:var(--acc);color:#fff}
+button.d{color:var(--dn)}
+button:focus-visible,input:focus-visible,select:focus-visible{outline:2px solid var(--acc);outline-offset:2px}
+input,select{background:var(--card);border:1px solid var(--line);border-radius:8px;padding:8px 10px;width:100%}
+label{display:block;font-size:13px;color:var(--mut);margin:8px 0 3px}
+.c{background:var(--card);border:1px solid var(--line);border-radius:10px;padding:14px;margin-bottom:12px}
+.row{display:flex;gap:8px;flex-wrap:wrap;align-items:center}
+.g{display:grid;grid-template-columns:repeat(auto-fit,minmax(130px,1fr));gap:10px}
+.k{font-size:12px;color:var(--mut)}.v{font-weight:600;direction:ltr;text-align:right}
+.big{font-size:26px;font-weight:700;direction:ltr;display:inline-block}
+.up{color:var(--up)}.dn{color:var(--dn)}.wa{color:var(--wa)}
+.lad{width:100%;border-collapse:collapse;margin-top:8px;font-size:13px}
+.lad td,.lad th{padding:5px 6px;border-top:1px solid var(--line);text-align:right}
+.lad th{color:var(--mut);font-weight:400}
+.lad .n{direction:ltr}
+.hit{background:color-mix(in srgb,var(--up) 14%,transparent)}
+.sp{flex:1}
+.tag{font-size:12px;border:1px solid var(--line);border-radius:99px;padding:1px 8px;color:var(--mut)}
+#toast{position:fixed;bottom:14px;inset-inline:14px;max-width:520px;margin:auto;display:flex;flex-direction:column;gap:6px;z-index:9}
+#toast div{background:var(--ink);color:var(--bg);padding:10px 14px;border-radius:8px}
+dialog{border:1px solid var(--line);border-radius:12px;background:var(--card);color:var(--ink);width:min(440px,94vw)}
+dialog::backdrop{background:#0008}
+.note{font-size:13px;color:var(--mut)}
+.hide{display:none}
+</style>
+</head>
+<body>
+<div class="w">
+<h1>مكتب الخروج</h1>
+<nav id="nav"></nav>
+<main id="main"></main>
+</div>
+<div id="toast" aria-live="polite"></div>
+<dialog id="dlg"></dialog>
+
+<script>
+const API='https://api.dexscreener.com',$=s=>document.querySelector(s);
+const DEF=()=>({set:{stop:.5,t1:2,t2:5,t3:10,s2:.25,s3:.25,trail:.4,income:.5,maxpos:5,tgTok:'',tgChat:'',aiKey:'',aiModel:'',sbUrl:'',sbKey:''},pos:[]});
+let S,tab='pos',stamp=null,look=null,timer=null,auto=true;
+try{S=JSON.parse(localStorage.getItem('exitdesk.v1'))||DEF()}catch(e){S=DEF()}
+/* بيانات Supabase العامة (آمنة للنشر لأن الحماية بـ RLS). الصق المفتاح العام anon فقط بين علامتي الاقتباس. لا تضع هنا service_role ولا مفتاح OpenRouter ولا توكن تيليجرام. */
+const PRE={sbUrl:'https://tioauskaxqbuyvspyknm.supabase.co',sbKey:''};
+S.set={...DEF().set,...S.set};
+S.set.sbUrl=S.set.sbUrl||PRE.sbUrl;S.set.sbKey=S.set.sbKey||PRE.sbKey;
+const save=()=>{try{localStorage.setItem('exitdesk.v1',JSON.stringify(S))}catch(e){toast('تعذر الحفظ في المتصفح')}};
+const esc=s=>String(s??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+const usd=n=>n==null||isNaN(n)?'-':(n<0?'-':'')+'$'+Math.abs(n).toLocaleString('en',{maximumFractionDigits:2});
+const pr=n=>!n||isNaN(n)?'-':n>=1?n.toFixed(4):n.toFixed(Math.min(12,Math.max(4,3-Math.floor(Math.log10(n)))));
+const qty=n=>isNaN(n)?'-':Math.round(n).toLocaleString('en');
+const pc=n=>n==null?'-':(n>0?'+':'')+(+n).toFixed(1)+'%';
+const cl=n=>n>0?'up':n<0?'dn':'';
+function toast(t){const d=document.createElement('div');d.textContent=t;$('#toast').append(d);setTimeout(()=>d.remove(),9000)}
+
+/* ---------- data ---------- */
+async function tokens(chain,addrs){
+  const out={};
+  for(let i=0;i<addrs.length;i+=30){
+    const r=await fetch(`${API}/tokens/v1/${chain}/${addrs.slice(i,i+30).join(',')}`);
+    if(!r.ok)throw new Error('HTTP '+r.status);
+    for(const p of await r.json()){const k=p.baseToken.address;
+      if(!out[k]||(p.liquidity?.usd||0)>(out[k].liquidity?.usd||0))out[k]=p}
+  }
+  return out;
+}
+async function refresh(){
+  const open=S.pos.filter(p=>p.status==='open'),by={};
+  open.forEach(p=>(by[p.chain]??=[]).push(p.addr));
+  try{
+    for(const c in by){const m=await tokens(c,by[c]);
+      open.filter(p=>p.chain===c).forEach(p=>{const q=m[p.addr];
+        if(q&&q.priceUsd){p.last=+q.priceUsd;p.liq=q.liquidity?.usd;p.mc=q.marketCap||q.fdv;p.ch24=q.priceChange?.h24;p.url=q.url;p.peak=Math.max(p.peak||0,p.last)}})}
+    stamp=new Date();check();save();render();
+  }catch(e){toast('تعذر جلب الأسعار: '+e.message)}
+}
+const ladder=p=>{const s=S.set,t=p.amt/p.entry,r=t*(1-1/s.t1);
+  return{t,q1:t/s.t1,q2:r*s.s2,q3:r*(1-s.s2)*s.s3,rest:r*(1-s.s2)*(1-s.s3)}};
+const levels=p=>{const s=S.set,a=[['stop','وقف الخسارة',p.entry*(1-s.stop),'dn'],
+  ['t1','الهدف 1',p.entry*s.t1,'up'],['t2','الهدف 2',p.entry*s.t2,'up'],['t3','الهدف 3',p.entry*s.t3,'up']];
+  if(p.peak>=p.entry*s.t1)a.push(['trail','هبوط من القمة (للجزء المتبقي)',p.peak*(1-s.trail),'dn']);return a};
+function check(){
+  S.pos.filter(p=>p.status==='open'&&p.last).forEach(p=>{
+    p.n??={};
+    levels(p).forEach(([k,name,price,d])=>{
+      if(p.n[k])return;
+      if((d==='up'&&p.last>=price)||(d==='dn'&&p.last<=price)){p.n[k]=1;
+        notify(`${p.name}: ${name} عند ${pr(price)} (السعر الآن ${pr(p.last)})`)}});
+    (p.alerts||[]).forEach(a=>{if(a.done)return;
+      if((a.dir==='up'&&p.last>=a.price)||(a.dir==='dn'&&p.last<=a.price)){a.done=1;notify(`${p.name}: وصل تنبيهك ${pr(a.price)} (الآن ${pr(p.last)})`)}});
+  });
+}
+function notify(t){
+  toast(t);
+  try{if(Notification.permission==='granted')new Notification('مكتب الخروج',{body:t})}catch(e){}
+  const{tgTok,tgChat}=S.set;
+  if(tgTok&&tgChat)fetch(`https://api.telegram.org/bot${encodeURIComponent(tgTok)}/sendMessage`,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({chat_id:tgChat,text:t})}).catch(()=>toast('تعذر الإرسال إلى تيليجرام'));
+}
+function startTimer(){clearInterval(timer);if(auto)timer=setInterval(refresh,60000)}
+
+/* ---------- views ---------- */
+function render(){
+  $('#nav').innerHTML=[['pos','مراكزي'],['look','بحث عن عملة'],['stats','النتائج'],['set','الإعدادات']]
+    .map(([k,t])=>`<button class="${tab===k?'on':''}" data-t="${k}">${t}</button>`).join('');
+  $('#main').innerHTML={pos:vPos,look:vLook,stats:vStats,set:vSet}[tab]();
+  if(tab==='set')sbStat();
+  if(tab==='look'&&look)$('#res').innerHTML=lookCard(look);
+}
+function vPos(){
+  const open=S.pos.filter(p=>p.status==='open'),inv=open.reduce((a,p)=>a+p.amt,0),
+  val=open.reduce((a,p)=>a+(p.last?p.amt*p.last/p.entry:p.amt),0);
+  return `<div class="c"><div class="g">
+    <div><div class="k">مستثمر في المفتوحة</div><div class="big">${usd(inv)}</div></div>
+    <div><div class="k">قيمتها الآن</div><div class="big">${usd(val)}</div></div>
+    <div><div class="k">غير محقق</div><div class="big ${cl(val-inv)}">${usd(val-inv)}</div></div></div>
+    <div class="row" style="margin-top:12px"><button class="p" data-a="add">إضافة مركز</button><button data-a="ref">تحديث الأسعار</button>
+    <label class="row" style="margin:0"><input type="checkbox" style="width:auto" id="auto" ${auto?'checked':''}> تحديث كل دقيقة</label>
+    <span class="sp"></span><span class="note">${stamp?'آخر تحديث '+stamp.toLocaleTimeString('ar'):'لم يتم التحديث بعد'}</span></div>
+    <p class="note" style="margin:10px 0 0">التنبيهات تعمل فقط والصفحة مفتوحة. للتنبيه وأنت غائب تحتاج خادماً (راجع ملاحظات الإعدادات).</p></div>`
+    +(open.length?open.map(card).join(''):`<div class="c">لا توجد مراكز مفتوحة. ابحث عن عملة أو أضف مركزاً بسعر دخولك.</div>`);
+}
+function card(p){
+  const L=ladder(p),m=p.last?p.last/p.entry:null,s=S.set;
+  const rows=[['وقف الخسارة',p.entry*(1-s.stop),'جميع الكمية'],['الهدف 1 ('+s.t1+'x)',p.entry*s.t1,qty(L.q1)+' (≈'+usd(L.q1*p.entry*s.t1)+')'],
+   ['الهدف 2 ('+s.t2+'x)',p.entry*s.t2,qty(L.q2)+' (≈'+usd(L.q2*p.entry*s.t2)+')'],['الهدف 3 ('+s.t3+'x)',p.entry*s.t3,qty(L.q3)+' (≈'+usd(L.q3*p.entry*s.t3)+')'],
+   ['تنبيه الجزء المتبقي',p.peak?p.peak*(1-s.trail):NaN,qty(L.rest)+' بعد القمة']];
+  const hit=i=>p.last&&(i===0?p.last<=rows[0][1]:i<4?p.last>=rows[i][1]:false);
+  return `<div class="c" data-id="${esc(p.id)}"><div class="row"><h2 style="margin:0">${esc(p.name)}</h2><span class="tag">${esc(p.chain)}</span>
+    <span class="sp"></span><div class="big ${m?cl(m-1):''}">${m?m.toFixed(2)+'x':'—'}</div></div>
+    <div class="g" style="margin-top:8px">
+    <div><div class="k">دخول</div><div class="v">${pr(p.entry)}</div></div><div><div class="k">الآن</div><div class="v">${pr(p.last)}</div></div>
+    <div><div class="k">المبلغ</div><div class="v">${usd(p.amt)}</div></div><div><div class="k">24 ساعة</div><div class="v ${cl(p.ch24)}">${pc(p.ch24)}</div></div>
+    <div><div class="k">السيولة</div><div class="v ${p.liq&&p.mc&&p.liq/p.mc<.05?'wa':''}">${usd(p.liq)}</div></div><div><div class="k">القيمة السوقية</div><div class="v">${usd(p.mc)}</div></div></div>
+    <table class="lad"><tr><th>المستوى</th><th>السعر</th><th>الكمية للبيع</th></tr>
+    ${rows.map((r,i)=>`<tr class="${hit(i)?'hit':''}"><td>${r[0]}</td><td class="n">${pr(r[1])}</td><td class="n">${r[2]}</td></tr>`).join('')}</table>
+    ${(p.alerts||[]).length?`<p class="note">تنبيهاتك: ${p.alerts.map(a=>(a.done?'✓ ':'')+pr(a.price)).join(' ، ')}</p>`:''}
+    ${p.src||p.reason?`<p class="note">${esc(p.src)} ${p.delay?'· تأخر '+esc(p.delay):''} ${p.reason?'· '+esc(p.reason):''}</p>`:''}
+    <div class="row"><button data-a="alert">+ تنبيه سعر</button><button data-a="aiP">تحليل AI</button><button data-a="close">إغلاق المركز</button>
+    ${p.url?`<a href="${esc(p.url)}" target="_blank" rel="noopener"><button>DexScreener</button></a>`:''}<span class="sp"></span><button class="d" data-a="del">حذف</button></div></div>`;
+}
+function vLook(){
+  return `<div class="c"><label for="q">عنوان العملة (mint) أو اسمها</label><div class="row"><input id="q" style="flex:1;min-width:200px" placeholder="مثال: عنوان العملة على سولانا">
+    <select id="ch" style="width:auto"><option>solana</option><option>ethereum</option><option>base</option><option>bsc</option></select>
+    <button class="p" data-a="search">بحث</button></div><p class="note">بالعنوان تحصل على نتيجة دقيقة. بالاسم قد تظهر عملات مقلدة بنفس الاسم، فتأكد من العنوان.</p></div><div id="res"></div>`;
+}
+function lookCard(r){
+  if(r.err)return `<div class="c dn">${esc(r.err)}</div>`;
+  return r.list.map((q,i)=>{
+    const age=q.pairCreatedAt?Math.max(0,(Date.now()-q.pairCreatedAt)/864e5):null,ratio=q.liquidity?.usd&&(q.marketCap||q.fdv)?q.liquidity.usd/(q.marketCap||q.fdv):null,
+    t1=q.txns?.h1||{};
+    return `<div class="c"><div class="row"><h2 style="margin:0">${esc(q.baseToken.symbol)} <span class="note">${esc(q.baseToken.name)}</span></h2><span class="tag">${esc(q.chainId)} · ${esc(q.dexId)}</span><span class="sp"></span><div class="big">${pr(+q.priceUsd)}</div></div>
+    <div class="g" style="margin-top:8px">
+    <div><div class="k">5د / 1س</div><div class="v"><span class="${cl(q.priceChange?.m5)}">${pc(q.priceChange?.m5)}</span> / <span class="${cl(q.priceChange?.h1)}">${pc(q.priceChange?.h1)}</span></div></div>
+    <div><div class="k">6س / 24س</div><div class="v"><span class="${cl(q.priceChange?.h6)}">${pc(q.priceChange?.h6)}</span> / <span class="${cl(q.priceChange?.h24)}">${pc(q.priceChange?.h24)}</span></div></div>
+    <div><div class="k">السيولة</div><div class="v ${ratio!=null&&ratio<.05?'wa':''}">${usd(q.liquidity?.usd)}</div></div>
+    <div><div class="k">القيمة السوقية</div><div class="v">${usd(q.marketCap||q.fdv)}</div></div>
+    <div><div class="k">حجم 24س</div><div class="v">${usd(q.volume?.h24)}</div></div>
+    <div><div class="k">شراء/بيع (1س)</div><div class="v">${t1.buys??'-'} / ${t1.sells??'-'}</div></div>
+    <div><div class="k">عمر الزوج</div><div class="v">${age==null?'-':age<1?Math.round(age*24)+' ساعة':Math.round(age)+' يوم'}</div></div>
+    <div><div class="k">سيولة ÷ سوقية</div><div class="v ${ratio!=null&&ratio<.05?'wa':''}">${ratio==null?'-':(ratio*100).toFixed(1)+'%'}</div></div></div>
+    ${ratio!=null&&ratio<.05?'<p class="note wa">السيولة أقل من 5% من القيمة السوقية: الخروج بمبالغ كبيرة قد يكسر السعر (اقتراح وليس قاعدة ثابتة).</p>':''}
+    <div class="row"><button class="p" data-a="addl" data-i="${i}">إضافة كمركز</button><button data-a="aiL" data-i="${i}">حلّل بالذكاء الاصطناعي</button><a href="${esc(q.url)}" target="_blank" rel="noopener"><button>DexScreener</button></a></div></div>`}).join('')||'<div class="c">لا نتائج.</div>';
+}
+function vStats(){
+  const cl_=S.pos.filter(p=>p.status==='closed'),pl=cl_.map(p=>p.proceeds-p.amt),w=pl.filter(x=>x>0),l=pl.filter(x=>x<0),
+  sum=a=>a.reduce((x,y)=>x+y,0),net=sum(pl),n=cl_.length,aw=w.length?sum(w)/w.length:0,al=l.length?sum(l)/l.length:0,
+  fy=cl_.filter(p=>p.followed==='نعم'),fn=cl_.filter(p=>p.followed==='لا'),best=n?Math.max(...cl_.map(p=>p.proceeds/p.amt)):0,
+  exp=n?net/n:0,inc=Math.max(0,net)*S.set.income;
+  const R=(k,v,c='')=>`<div><div class="k">${k}</div><div class="v ${c}">${v}</div></div>`;
+  return `<div class="c"><h2>النتائج (الصفقات المغلقة فقط)</h2><div class="g">
+  ${R('عدد المغلقة',n)}${R('نسبة الربح',n?Math.round(w.length/n*100)+'%':'-')}${R('صافي الربح',usd(net),cl(net))}
+  ${R('متوسط الرابحة',usd(aw),'up')}${R('متوسط الخاسرة',usd(al),'dn')}${R('المتوقع لكل صفقة',usd(exp),cl(exp))}
+  ${R('أفضل مضاعف',best?best.toFixed(1)+'x':'-')}${R('الدخل المسحوب',usd(inc))}${R('يعود لرأس المال',usd(Math.max(0,net)-inc))}
+  ${R('ربح الملتزمة بالخطة',usd(sum(fy.map(p=>p.proceeds-p.amt))))}${R('ربح المخالفة للخطة',usd(sum(fn.map(p=>p.proceeds-p.amt))))}</div>
+  <p class="note" style="margin-top:12px">${n<20?'أقل من 20 صفقة مغلقة: لا تحكم على النظام بعد.':exp>0?'النظام رابح حتى الآن.':'النظام خاسر حتى الآن: راجع أسباب الدخول أو الخروج.'}</p></div>
+  ${n?`<div class="c"><h2>سجل المغلقة</h2><table class="lad"><tr><th>العملة</th><th>المبلغ</th><th>استرجعت</th><th>مضاعف</th><th>الخطة</th><th>الدرس</th></tr>
+  ${cl_.map(p=>`<tr><td>${esc(p.name)}</td><td class="n">${usd(p.amt)}</td><td class="n">${usd(p.proceeds)}</td><td class="n ${cl(p.proceeds-p.amt)}">${(p.proceeds/p.amt).toFixed(2)}x</td><td>${esc(p.followed)}</td><td>${esc(p.lesson)}</td></tr>`).join('')}</table></div>`:''}`;
+}
+function vSet(){
+  const s=S.set,f=(k,t,pct)=>`<div><label for="s_${k}">${t}</label><input id="s_${k}" data-s="${k}" type="number" step="any" value="${pct?s[k]*100:s[k]}" data-p="${pct?1:''}"></div>`;
+  return `<div class="c"><h2>قواعد الخروج</h2><div class="g">
+  ${f('stop','وقف الخسارة %',1)}${f('t1','الهدف 1 (x)')}${f('t2','الهدف 2 (x)')}${f('t3','الهدف 3 (x)')}
+  ${f('s2','بيع عند الهدف 2 من المتبقي %',1)}${f('s3','بيع عند الهدف 3 من المتبقي %',1)}${f('trail','هبوط من القمة للمتبقي %',1)}${f('income','نسبة الربح المسحوبة %',1)}${f('maxpos','الحد الأعلى للصفقة ($)')}</div>
+  <p class="note">الهدف 1 يبيع ما يعيد رأس مالك (1 ÷ المضاعف). الأرقام الافتراضية اقتراحات وليست مثبتة.</p></div>
+  <div class="c"><h2>التنبيهات</h2><div class="row"><button data-a="perm">تفعيل إشعارات المتصفح</button></div>
+  <label for="tgt">توكن بوت تيليجرام (اختياري)</label><input id="tgt" data-s="tgTok" type="password" value="${esc(s.tgTok)}" autocomplete="off">
+  <label for="tgc">Chat ID</label><input id="tgc" data-s="tgChat" value="${esc(s.tgChat)}" autocomplete="off">
+  <p class="note">التوكن يُحفظ في متصفحك فقط ويُرسل إلى تيليجرام وحده. استخدم بوتاً جديداً مخصصاً لهذا الغرض. الإرسال يعمل والصفحة مفتوحة. ولتنبيهات 24 ساعة بلا صفحة مفتوحة يلزم خادم يفحص الأسعار دورياً.</p></div>
+  <div class="c"><h2>التحليل بالذكاء الاصطناعي (OpenRouter)</h2>
+  <label for="aik">مفتاح OpenRouter</label><input id="aik" data-s="aiKey" type="password" value="${esc(s.aiKey)}" autocomplete="off">
+  <label for="aim">معرّف النموذج (من openrouter.ai/models)</label><input id="aim" data-s="aiModel" dir="ltr" value="${esc(s.aiModel)}" placeholder="provider/model-name">
+  <p class="note">المفتاح يُحفظ في هذا المتصفح فقط. أنشئ مفتاحاً مخصصاً لهذا التطبيق وضع له حداً صغيراً للإنفاق إن أتاح OpenRouter ذلك، ولا تضعه أبداً في الكود أو في GitHub. النموذج يرى الأرقام التي نرسلها فقط، فلا يعرف الفريق ولا المشروع، ولا يتنبأ بالسعر. اعتبره مراجع مخاطر وليس إشارة شراء. اختر أرخص نموذج يعطيك إجابات معقولة بعد تجربة عدة نماذج.</p></div>
+  <div class="c"><h2>مزامنة Supabase (اختياري)</h2>
+  <label for="sbu">Project URL</label><input id="sbu" data-s="sbUrl" dir="ltr" value="${esc(s.sbUrl)}">
+  <label for="sbk">Anon public key</label><input id="sbk" data-s="sbKey" dir="ltr" value="${esc(s.sbKey)}">
+  <label for="sbm">بريدك</label><input id="sbm" type="email" dir="ltr" autocomplete="username">
+  <label for="sbp">كلمة السر</label><input id="sbp" type="password" dir="ltr" autocomplete="current-password">
+  <p class="note" id="sbs"></p>
+  <div class="row" style="margin-top:8px"><button class="p" data-a="sbp">دخول بالبريد وكلمة السر</button><button data-a="sbl">أو أرسل رابط دخول</button><button data-a="sbo">خروج</button><button data-a="sbu">رفع بياناتي</button><button data-a="sbd">تنزيل بياناتي</button></div>
+  <p class="note">يُرفع المراكز والإعدادات فقط، بدون مفاتيح. بعد تسجيل الدخول يرفع التطبيق تلقائياً عند إضافة مركز أو إغلاقه أو حذفه، ويحدّث نفسه عند فتح الصفحة إن وجد نسخة أحدث. لا يستبدل نسخة أحدث دون إذنك. شغّل ملف supabase-setup.sql أولاً.</p></div>
+  <div class="c"><h2>بياناتك</h2><div class="row"><button data-a="expj">نسخة احتياطية JSON</button><button data-a="expc">تصدير CSV (Excel)</button><label class="p" style="margin:0;padding:8px 12px;border-radius:8px;cursor:pointer;color:#fff;background:var(--acc)">استيراد JSON<input type="file" id="imp" accept=".json" class="hide"></label></div>
+  <p class="note">البيانات محفوظة في هذا المتصفح وعلى هذا الجهاز فقط. خذ نسخة احتياطية قبل مسح بيانات المتصفح أو تغيير الجهاز.</p></div>`;
+}
+
+/* ---------- dialogs ---------- */
+function dlg(html){const d=$('#dlg');d.innerHTML=`<form method="dialog" id="df">${html}<div class="row" style="margin-top:14px"><button class="p" value="ok">حفظ</button><button value="x" formnovalidate>إلغاء</button></div></form>`;d.showModal();return d}
+const fld=(id,t,v='',ty='text',ex='')=>`<label for="${id}">${t}</label><input id="${id}" type="${ty}" step="any" value="${esc(v)}" ${ex}>`;
+function addDlg(pre={}){
+  const d=dlg(`<h2>مركز جديد</h2>${fld('f_name','اسم العملة',pre.name,'text','required')}${fld('f_addr','عنوان العملة (mint)',pre.addr,'text','required')}
+  <label for="f_chain">الشبكة</label><select id="f_chain">${['solana','ethereum','base','bsc'].map(c=>`<option ${c===(pre.chain||'solana')?'selected':''}>${c}</option>`).join('')}</select>
+  ${fld('f_entry','سعر الدخول ($)',pre.price,'number','required min="0"')}${fld('f_amt','المبلغ ($)','','number','required min="0"')}
+  ${fld('f_src','المحفظة المصدر (أول 4 أحرف)')}${fld('f_delay','التأخر عن دخولها (مثال: 20 دقيقة)')}${fld('f_why','سبب الدخول')}
+  <p class="note">الحد الأعلى للصفقة في إعداداتك: ${usd(S.set.maxpos)}</p>`);
+  d.onclose=()=>{if(d.returnValue!=='ok')return;
+    const e=+$('#f_entry').value,a=+$('#f_amt').value;if(!(e>0&&a>0)||!$('#f_addr').value.trim())return toast('سعر الدخول والمبلغ والعنوان مطلوبة');
+    if(a>S.set.maxpos)toast('المبلغ أكبر من حدك الأعلى للصفقة');
+    S.pos.unshift({id:Date.now()+'',name:$('#f_name').value.trim(),addr:$('#f_addr').value.trim(),chain:$('#f_chain').value,entry:e,amt:a,date:new Date().toISOString(),
+      src:$('#f_src').value,delay:$('#f_delay').value,reason:$('#f_why').value,status:'open',peak:e,n:{},alerts:[]});
+    save();tab='pos';render();refresh();sync()};
+}
+function closeDlg(p){
+  const d=dlg(`<h2>إغلاق ${esc(p.name)}</h2>${fld('c_pr','إجمالي ما استرجعته من كل البيع ($)','','number','required min="0"')}
+  <label for="c_f">هل التزمت بخطة الخروج؟</label><select id="c_f"><option>نعم</option><option>لا</option></select>${fld('c_l','الدرس / ملاحظة')}`);
+  d.onclose=()=>{if(d.returnValue!=='ok')return;const v=$('#c_pr').value;if(v==='')return toast('أدخل المبلغ المسترجع');
+    Object.assign(p,{status:'closed',proceeds:+v,followed:$('#c_f').value,lesson:$('#c_l').value,closed:new Date().toISOString()});save();render();sync()};
+}
+
+/* ---------- events ---------- */
+document.addEventListener('click',async e=>{
+  const t=e.target.closest('button');if(!t)return;
+  if(t.dataset.t){tab=t.dataset.t;return render()}
+  const a=t.dataset.a,p=S.pos.find(x=>x.id===t.closest('[data-id]')?.dataset.id);
+  if(a==='add')addDlg();
+  else if(a==='ref')refresh();
+  else if(a==='del'&&p&&confirm('حذف '+p.name+'؟')){S.pos=S.pos.filter(x=>x!==p);save();render();sync()}
+  else if(a==='close'&&p)closeDlg(p);
+  else if(a==='alert'&&p){const v=+prompt('سعر التنبيه ($)، السعر الحالي '+pr(p.last));
+    if(v>0){(p.alerts??=[]).push({price:v,dir:v>(p.last||p.entry)?'up':'dn',done:0});save();render();sync()}}
+  else if(a==='aiP'&&p)ai(ctxP(p));else if(a==='aiL')ai(ctxL(look.list[+t.dataset.i]));else if(a==='sbl')sbLogin();else if(a==='sbp')sbPass();else if(a==='sbo')sbOut();else if(a==='sbu')sbPush();else if(a==='sbd')sbPull();
+  else if(a==='search')doSearch();
+  else if(a==='addl'){const q=look.list[+t.dataset.i];addDlg({name:q.baseToken.symbol,addr:q.baseToken.address,chain:q.chainId,price:q.priceUsd})}
+  else if(a==='perm'){try{toast('الإذن: '+await Notification.requestPermission())}catch(x){toast('المتصفح لا يدعم الإشعارات')}}
+  else if(a==='expj')dl('exit-desk-backup.json',JSON.stringify(S),'application/json');
+  else if(a==='expc'){const h=['العملة','الحالة','تاريخ الدخول','سعر الدخول','المبلغ','المسترجع','المضاعف','الالتزام','الدرس','المحفظة المصدر','التأخر','سبب الدخول'],
+    q=v=>'"'+String(v??'').replace(/"/g,'""')+'"';
+    dl('trades.csv','\ufeff'+[h,...S.pos.map(p=>[p.name,p.status==='open'?'مفتوحة':'مغلقة',p.date?.slice(0,10),p.entry,p.amt,p.proceeds,p.proceeds?p.proceeds/p.amt:'',p.followed,p.lesson,p.src,p.delay,p.reason])].map(r=>r.map(q).join(',')).join('\n'),'text/csv')}
+});
+document.addEventListener('change',e=>{
+  const t=e.target;
+  if(t.id==='auto'){auto=t.checked;startTimer()}
+  if(t.dataset.s){S.set[t.dataset.s]=t.type==='number'?(+t.value)/(t.dataset.p?100:1):t.value;save()}
+  if(t.id==='imp'&&t.files[0]){const r=new FileReader();r.onload=()=>{try{const j=JSON.parse(r.result);if(!Array.isArray(j.pos))throw 0;S={...DEF(),...j};S.set={...DEF().set,...S.set};save();render();toast('تم الاستيراد')}catch(x){toast('ملف غير صالح')}};r.readAsText(t.files[0])}
+});
+document.addEventListener('keydown',e=>{if(e.key==='Enter'&&e.target.id==='q')doSearch()});
+function dl(n,c,m){const a=document.createElement('a');a.href=URL.createObjectURL(new Blob([c],{type:m}));a.download=n;a.click()}
+async function doSearch(){
+  const q=$('#q').value.trim(),ch=$('#ch').value;if(!q)return;
+  $('#res').innerHTML='<div class="c">جار البحث...</div>';
+  try{
+    let list;
+    if(/^[A-Za-z0-9]{32,}$|^0x[a-fA-F0-9]{40}$/.test(q)){const m=await tokens(ch,[q]);list=Object.values(m)}
+    else{const r=await fetch(`${API}/latest/dex/search?q=${encodeURIComponent(q)}`);if(!r.ok)throw new Error('HTTP '+r.status);
+      list=((await r.json()).pairs||[]).filter(x=>x.chainId===ch).sort((a,b)=>(b.liquidity?.usd||0)-(a.liquidity?.usd||0)).slice(0,5)}
+    look=list.length?{list}:{err:'لا نتائج على هذه الشبكة. تحقق من العنوان أو الشبكة.'};
+  }catch(e){look={err:'تعذر البحث: '+e.message}}
+  $('#res').innerHTML=lookCard(look);
+}
+/* ---------- AI ---------- */
+const SYS='أنت مراجع مخاطر لتداول العملات الصغيرة. أجب بالعربية في 8 أسطر كحد أقصى. استخدم الأرقام المرسلة فقط ولا تخترع معلومات عن الفريق أو المشروع أو المحافظ. ابدأ بحكم واحد: ادخل بمبلغ صغير / تخطَّ / راقب. ثم أهم 3 أسباب من الأرقام. ثم سطر واحد عما لا تستطيع هذه الأرقام إثباته. لا تتنبأ بالسعر.';
+const ctxL=q=>{const s=S.set,t=q.txns?.h1||{},m=q.marketCap||q.fdv,r=q.liquidity?.usd&&m?(q.liquidity.usd/m*100).toFixed(1)+'%':'غير معروفة';
+  return `عملة ${q.baseToken.symbol} على ${q.chainId}/${q.dexId}. السعر ${q.priceUsd}$. التغير: 5د ${q.priceChange?.m5}% ، 1س ${q.priceChange?.h1}% ، 6س ${q.priceChange?.h6}% ، 24س ${q.priceChange?.h24}%. السيولة ${q.liquidity?.usd}$ والقيمة السوقية ${m}$ (النسبة ${r}). حجم 24س ${q.volume?.h24}$. شراء/بيع آخر ساعة ${t.buys}/${t.sells}. عمر الزوج ${q.pairCreatedAt?((Date.now()-q.pairCreatedAt)/36e5).toFixed(0)+' ساعة':'غير معروف'}. حدي الأعلى للصفقة ${s.maxpos}$. هل أدخل بمبلغ صغير؟`};
+const ctxP=p=>{const s=S.set;return `مركزي على ${p.name}: دخلت بسعر ${p.entry}$ بمبلغ ${p.amt}$. السعر الآن ${p.last||'غير معروف'}$ (${p.last?(p.last/p.entry).toFixed(2):'؟'}x) وأعلى سعر ${p.peak}$. خطتي: وقف ${s.stop*100}% وأهداف ${s.t1}x/${s.t2}x/${s.t3}x وتنبيه هبوط ${s.trail*100}% من القمة للمتبقي. السيولة ${p.liq}$ والقيمة السوقية ${p.mc}$ وتغير 24س ${p.ch24}%. ما الذي تنص عليه خطتي الآن، وهل في الأرقام علامة خطر؟`};
+function aiBox(t){const d=$('#dlg');if(!d.open){d.innerHTML='<form method="dialog"><h2>تحليل</h2><div id="aio" style="white-space:pre-wrap"></div><div class="row" style="margin-top:14px"><button>إغلاق</button></div></form>';d.showModal()}$('#aio').textContent=t}
+async function ai(ctx){
+  const{aiKey,aiModel}=S.set;if(!aiKey||!aiModel)return toast('أدخل مفتاح OpenRouter والنموذج في الإعدادات');
+  aiBox('جار التحليل...');
+  try{const r=await fetch('https://openrouter.ai/api/v1/chat/completions',{method:'POST',headers:{'Authorization':'Bearer '+aiKey,'Content-Type':'application/json'},
+      body:JSON.stringify({model:aiModel,max_tokens:700,messages:[{role:'system',content:SYS},{role:'user',content:ctx}]})});
+    const j=await r.json();if(!r.ok)throw new Error(j.error?.message||'HTTP '+r.status);
+    const u=j.usage;aiBox((j.choices?.[0]?.message?.content||'لا رد')+(u?`\n\n(${u.prompt_tokens} رمز إدخال + ${u.completion_tokens} رمز إخراج)`:''))
+  }catch(e){aiBox('تعذر التحليل: '+e.message)}
+}
+/* ---------- Supabase ---------- */
+let sb=null;
+async function sbInit(){
+  const{sbUrl,sbKey}=S.set;if(!sbUrl||!sbKey)return null;
+  if(!window.supabase)await new Promise((ok,no)=>{const s=document.createElement('script');s.src='https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.45.4/dist/umd/supabase.min.js';s.onload=ok;s.onerror=no;document.head.append(s)});
+  return sb??=window.supabase.createClient(sbUrl,sbKey);
+}
+async function sbUser(q){const c=await sbInit();if(!c){q||toast('أدخل رابط المشروع والمفتاح العام');return[]}const{data}=await c.auth.getUser();if(!data?.user){q||toast('سجّل الدخول أولاً');return[]}return[c,data.user]}
+async function sbLogin(){try{const c=await sbInit(),em=$('#sbm').value.trim();if(!c||!em)return toast('أدخل بيانات المشروع وبريدك');
+  const{error}=await c.auth.signInWithOtp({email:em,options:{emailRedirectTo:location.origin+location.pathname}});toast(error?error.message:'أرسلنا رابط الدخول إلى بريدك. افتحه من هذا الجهاز.')}catch(e){toast('تعذر الاتصال: '+e.message)}}
+const newer=(a,b)=>!b||Date.parse(a)>Date.parse(b);
+async function sbPush(q){try{const[c,u]=await sbUser(q);if(!c)return;
+  const{data:r}=await c.from('desk_state').select('updated_at').eq('user_id',u.id).maybeSingle();
+  if(r&&newer(r.updated_at,S.sync)){if(q)return toast('توجد نسخة أحدث على Supabase. نزّلها من الإعدادات قبل الرفع.');if(!confirm('توجد نسخة أحدث على Supabase. الرفع سيستبدلها. متابعة؟'))return}
+  const set={...S.set};['tgTok','aiKey','sbUrl','sbKey'].forEach(k=>delete set[k]);const now=new Date().toISOString();
+  const{error}=await c.from('desk_state').upsert({user_id:u.id,data:{pos:S.pos,set},updated_at:now});
+  if(error)return toast(error.message);S.sync=now;save();q||toast('تم الرفع')}catch(e){toast('تعذر الرفع: '+e.message)}}
+async function sbPull(auto){try{const[c,u]=await sbUser(auto);if(!c)return;const{data,error}=await c.from('desk_state').select('data,updated_at').eq('user_id',u.id).maybeSingle();
+  if(error)return auto||toast(error.message);if(!data)return auto||toast('لا توجد نسخة على Supabase');
+  if(auto){if(!newer(data.updated_at,S.sync))return;if(!S.sync&&S.pos.length)return toast('توجد بيانات محلية وأخرى على Supabase. اختر رفع أو تنزيل من الإعدادات.')}
+  else if(!confirm('سيستبدل ذلك مراكزك المحلية. متابعة؟'))return;
+  S.pos=data.data.pos||[];S.set={...S.set,...data.data.set};S.sync=data.updated_at;save();render();toast(auto?'حُدّثت بياناتك من Supabase':'تم التنزيل')}catch(e){auto||toast('تعذر التنزيل: '+e.message)}}
+async function sbPass(){try{const c=await sbInit(),em=$('#sbm').value.trim(),pw=$('#sbp').value;if(!c||!em||!pw)return toast('أدخل بيانات المشروع والبريد وكلمة السر');
+  const{error}=await c.auth.signInWithPassword({email:em,password:pw});if(error)return toast('فشل الدخول: '+error.message);toast('تم الدخول');sbStat();sbPull(true)}catch(e){toast('تعذر الاتصال: '+e.message)}}
+async function sbOut(){try{const c=await sbInit();if(c){await c.auth.signOut();sbStat();toast('تم الخروج')}}catch(e){toast(e.message)}}
+async function sbStat(){const el=$('#sbs');if(!el)return;try{const[c,u]=await sbUser(true);el.textContent=u?'الحالة: مسجّل الدخول بـ '+u.email:'الحالة: غير مسجّل الدخول على هذا الجهاز'}catch(e){el.textContent='الحالة: تعذر الاتصال بـ Supabase'}}
+const sync=()=>{if(S.set.sbUrl&&S.set.sbKey)sbPush(true)};
+
+{const hp=new URLSearchParams(location.hash.slice(1));if(hp.get('error_description'))setTimeout(()=>toast('خطأ الدخول: '+hp.get('error_description')),500)}
+render();startTimer();if(S.pos.some(p=>p.status==='open'))refresh();
+if(S.set.sbUrl&&S.set.sbKey)sbInit().then(c=>c&&c.auth.getSession()).then(r=>r?.data?.session&&sbPull(true)).catch(()=>{});
+</script>
+</body>
+</html>
